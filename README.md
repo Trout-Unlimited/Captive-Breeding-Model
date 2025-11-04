@@ -7,7 +7,7 @@ In review, DOI to come
 
 
 
-The model code structure was based on Willoughby and Christie (2019), with their framework serving as a scaffold for our implementation. 
+The model code structure was based on Willoughby and Christie 2019 (DOI: 10.1111/cobi.13217), with their framework serving as a scaffold for our implementation. 
 
 
 
