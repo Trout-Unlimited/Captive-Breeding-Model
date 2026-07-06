@@ -1,4 +1,11 @@
-StartingPop = function(N, agestage, nloci, sigp, alphaAB, alphaAA, alphaBB){
+StartingPop = function(N, agestage, nloci, nAlleles, nstarAA, nstarAB, nstarBB){
+  
+  #For testing:
+  # N=runvars$N[1]; nloci=runvars$nloci[1]; nAlleles=runvars$nAlleles[1]; 
+  # betaAB=runvars$betaAB[1]; betaAA=runvars$betaAA[1]; betaBB=runvars$betaBB[1]
+  # nstarAA = nstarAA.V; nstarAB=nstarAB.V; nstarBB=nstarBB.V
+
+  
   
   #Create pop details (minus genetic data)
   population = matrix(nrow=N, ncol=12)
@@ -21,20 +28,20 @@ StartingPop = function(N, agestage, nloci, sigp, alphaAB, alphaAA, alphaBB){
   population$fate <- as.character(population$fate)
   
 
-  loci = c("L1")
-  alleles = c("A1", "A2")
+  LLA = c("L1")
+  LLAalleles = c("A1", "A2")
   
-  ops_comb <- expand_grid(loci, alleles) %>% 
+  ops_comb <- expand_grid(LLA, LLAalleles) %>% 
           mutate(val = NA) %>% 
-          pivot_wider(names_from = loci, values_from = val)  
+          pivot_wider(names_from = LLA, values_from = val)  
   
-  ops_comb[1,"L1"] = 50 #Allele A
-  ops_comb[2,"L1"] = 5000 #Allele B
+  ops_comb[1,"L1"] = 50 #LLA Allele A
+  ops_comb[2,"L1"] = 5000 #LLA Allele B
   
   #Add allele options for second parent
   ops_comb <- cbind(ops_comb, ops_comb[,-1])
     
-  colnames(ops_comb) <- c("alleles", "L1m", "L1d")
+  colnames(ops_comb) <- c("LLAalleles", "L1m", "L1d")
   
    
    allOptions <- ops_comb %>% 
@@ -42,63 +49,92 @@ StartingPop = function(N, agestage, nloci, sigp, alphaAB, alphaAA, alphaBB){
      rowwise() %>% 
      mutate(pheno = sum(L1m, L1d))
    
-   #Pheno AA
-   set1 <- allOptions %>% filter(pheno==100) %>% 
-                          ungroup %>% 
-                          slice_sample(n=alphaAA, replace=T)
-
-   #Pheno BB
-   set2 <- allOptions %>% filter(pheno==10000) %>% 
-                          ungroup %>% 
-                          slice_sample(n=alphaBB, replace=T)
-
-   #Pheno AB
-   set3 <- allOptions %>% filter(pheno==5050) %>% 
-                          ungroup %>%
-                          slice_sample(n=alphaAB, replace=T)
-
+ #Sample out phenotypes:  
+   sample_geno <- function(data, pheno_val, nstar) {
+     if (nstar >= 1) {
+       data %>%
+         filter(pheno == pheno_val) %>%
+         ungroup() %>%
+         slice_sample(n = floor(nstar), replace = TRUE)
+     } else {
+       data[0, ]
+     }
+   }
    
+   set1 <- sample_geno(allOptions, 100, nstarAA)
+   set3 <- sample_geno(allOptions, 5050, nstarAB)
+   set2 <- sample_geno(allOptions, 10000, nstarBB)
+   
+###############################################
+   # #Geno AA (Note: using geno and pheno interchangably with LLA)
+   # set1 <- allOptions %>% filter(pheno==100) %>% 
+   #                        ungroup %>% 
+   #                        slice_sample(n=nstarAA, replace=T)
+   # 
+   # #Geno AB
+   # set3 <- allOptions %>% filter(pheno==5050) %>% 
+   #                        ungroup %>%
+   #                        slice_sample(n=nstarAB, replace=T)
+   # 
+   # #Geno BB
+   # set2 <- allOptions %>% filter(pheno==10000) %>% 
+   #          ungroup %>% 
+   #          slice_sample(n=nstarBB, replace=T)
+
+####################################################   
    genos <- rbind(set1, set2, set3)
    
    population$pheno <- genos$pheno
-   
-  
-  ########################################################
-   ## Add the neutral diversity (loci of small effect)
-  ########################################################
-   loci_neu = c("L2m", "L3m", "L4m", "L5m", "L6m", "L7m", "L8m", "L9m", "L10m", "L11m", 
-                    "L12m", "L13m", "L14m", "L15m", "L16m", "L17m", "L18m", "L19m", "L20m", "L21m",
-                    "L22m", "L23m", "L24m", "L25m", "L26m", "L27m", "L28m", "L29m", "L30m", "L31m")
 
+  ########################################################
+   ## Add the neutral loci
+  ########################################################
+
+   loci_neu = paste0("L", 2:nloci, "m") #col names for neutral loci from mom
+   loci_neu_dad = paste0("L", 2:nloci, "d") #col names for neutral loci from dad
    
-   alleles_neu = c("A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10")
+   #nAlleles=5
+   alleles_neu = paste0("A", 1:nAlleles)
+
+   #alleles_neu = c("A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10")
    
    ops_neu <- expand_grid(loci_neu, alleles_neu) %>% 
      mutate(val = NA) %>% 
      pivot_wider(names_from = loci_neu, values_from = val)  
    
-   #Create all options for alleles
-   for(i in 2:ncol(ops_neu)){
-     ops_neu[,i] = seq((i-1)*10, (i-1)*10+9)
-   }
+   # #Create all options for alleles
+   # for(i in 2:ncol(ops_neu)){
+   #   ops_neu[,i] = seq((i-1)*10, (i-1)*10+9)
+   # }
+   
+   #Populate allele values
+   ops_neu[, -1] <- matrix(
+     10:(9 + nAlleles * (ncol(ops_neu) - 1)), #10 being that we start alleles at number 10
+     nrow = nrow(ops_neu),
+     byrow = FALSE
+   )
    
    #Add allele options for second parent
    ops_neu_comb <- as.matrix(cbind(ops_neu[,-1], ops_neu[,-1]))
+   #HO note: ignore column names here, they are changed later on
    
    #Create neutral genotype matrix
      genos_neu <- matrix(data=0,nrow=N,ncol=(nloci-1)*2)
 
      for (i in 1:N){
-       j<-sample.int(n=10,size=(2*(nloci-1)),replace=TRUE)
+       #i=1
+       j<-sample.int(n=nAlleles,size=(2*(nloci-1)),replace=TRUE)
 
        #Maternal alleles
        for (k in 1:nloci-1){
+         #k=1
          #genos_neu[i,k] <- ops_neu_comb[k,j[k]]
          genos_neu[i,k] <- ops_neu_comb[j[k], k]
        }
 
        #Paternal alleles
-         for (h in 31:((nloci-1)*2)){
+       #h=1
+         for (h in (nloci):((nloci-1)*2)){
            genos_neu[i,h] <- ops_neu_comb[j[h], h]
            
          }
@@ -107,17 +143,17 @@ StartingPop = function(N, agestage, nloci, sigp, alphaAB, alphaAA, alphaBB){
 
      }
    
-     loci_neu_dad = c("L2d", "L3d", "L4d", "L5d", "L6d", "L7d", "L8d", "L9d", "L10d", "L11d", 
-                      "L12d", "L13d", "L14d", "L15d", "L16d", "L17d", "L18d", "L19d", "L20d", "L21d",
-                      "L22d", "L23d", "L24d", "L25d", "L26d", "L27d", "L28d", "L29d", "L30d", "L31d")
+     # loci_neu_dad = c("L2d", "L3d", "L4d", "L5d", "L6d", "L7d", "L8d", "L9d", "L10d", "L11d", 
+     #                  "L12d", "L13d", "L14d", "L15d", "L16d", "L17d", "L18d", "L19d", "L20d", "L21d",
+     #                  "L22d", "L23d", "L24d", "L25d", "L26d", "L27d", "L28d", "L29d", "L30d", "L31d")
      
      colnames(genos_neu) <- c(loci_neu, loci_neu_dad)
      
      #Separate data so I can cbind in correct order below
      momL1m <- genos[,"L1m"]
      dadL2d <- genos[,"L1d"]
-      mom_neuGenos <- genos_neu[,1:30]
-      dad_neuGenos <- genos_neu[,31:60]
+      mom_neuGenos <- genos_neu[,1:(nloci-1)]
+      dad_neuGenos <- genos_neu[,nloci:(2*nloci-2)]
      
      
      population = cbind(population, momL1m, mom_neuGenos, dadL2d, dad_neuGenos)

@@ -6,6 +6,12 @@
 # All spawners (not culled) go into df:spawners
 # All spawners and culled are marked in df:population
 
+## For troubleshooting: 
+# pBroodstock<-runvars$pBroodstock[r]; pNOB<-runvars$pNOB[r]; pHOS<-runvars$pHOS[r] 
+# pNOBinit<-runvars$pNOBinit[r]; yrsCapInit<-runvars$yrsCapInit[r]
+# maturity<-runvars$maturity[r]; perSpawn1<-runvars$perSpawn1[r]; perSpawn2<-runvars$perSpawn2[r]; perSpawn3<-runvars$perSpawn3[r]
+
+
 
 IdentifySpawners = function(population, pBroodstock, pNOB, pHOS,
                             pNOBinit, yrsCapInit,
@@ -47,7 +53,7 @@ IdentifySpawners = function(population, pBroodstock, pNOB, pHOS,
     }
     
     ####IF YOU ARE IN INITIALIZATION YEARS####
-    if(g >= runvars$startcap[r] & g <= runvars$startcap[r]+runvars$yrsCapInit[r]){
+    if(g >= runvars$startcap[r] & g <= runvars$startcap[r]+runvars$yrsCapInit[r]-1){
       
     # Put wildborn broodstock into a dataframe
     wildbornBS = possibleSpawners %>% 

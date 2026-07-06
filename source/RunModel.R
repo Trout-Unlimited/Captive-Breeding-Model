@@ -4,16 +4,23 @@ RunModel = function(runvars, r){
   
   if(runvars$inputPop[r]==F){
   #set initial age structure of population (equal proportion of all ages) 
-  agestage   = data.frame(age = (1:runvars$lifespan[r]), num = rep(runvars$N[r]/(runvars$lifespan[r]*runvars$N[r]), runvars$lifespan[r])) 
-  population = StartingPop(runvars$N[r], agestage, runvars$nloci[r], runvars$sigp[r], runvars$alphaAB[r], runvars$alphaAA[r], runvars$alphaBB[r])
-  # otherpop   = StartingPop(10000, agestage, runvars$nloci[r], runvars$sigp[r], runvars$omegaWild[r])
-  #   otherpop$gen = 9999 #marker, otherwise all 0
-  #otherpop   = otherpop[,13:(runvars$nloci[r]*2+12)]
+  agestage   = data.frame(age = (1:runvars$lifespan[r]), num = rep(runvars$N[r]/(runvars$lifespan[r]*runvars$N[r]), 
+                                                                   runvars$lifespan[r])) 
+  population = StartingPop(runvars$N[r], agestage, runvars$nloci[r], runvars$nAlleles[r], 
+                           runvars$nstarAA[r], runvars$nstarAB[r], runvars$nstarBB[r])
+
   remove(agestage)
 
   } else{
     load("C:/Users/Haley.Ohms/OneDrive - Trout Unlimited/Documents/GitHub/captivebreeding-IBM-ohms/inputPop/PopulationFile.rda")
-    #load("C:/Users/Haley.Ohms/OneDrive - Trout Unlimited/Documents/GitHub/captivebreeding-IBM-ohms/inputPop/OtherpopFile.rda")
+    #For troubleshooting: 
+    #population <- read_csv("C:/Users/Haley.Ohms/OneDrive - Trout Unlimited/Documents/Proj_Hatcheries/WilloughbyModelOutput/May18_26_ShepTest8/population_indvs_0003.csv")
+    population <- read_csv("C:/Users/Haley.Ohms/OneDrive - Trout Unlimited/Documents/GitHub/captivebreeding-IBM-ohms/output/population_indvs_0003.csv")
+    
+    max(population$gen)
+    population <- population %>% mutate(alive = if_else(gen==21, 1, 0))
+    
+    
   }
   
   #write starting population headers to file 
@@ -24,43 +31,22 @@ RunModel = function(runvars, r){
   #set up variables and ID number counter
   totalinds  = length(population[,1]) + 1 #VariableForUniqueID
   alldead <<- "none"  #Error check holder; reset for each r
+  offPhenos_list <- list() #offspring phenos holder
 
 #### Simulate over years ####
-      for(g in 1:(runvars$gens[r] + runvars$lifespan[r] + 1)){  #Says how long to simulate: generations (years) plus a single lifespan + 1
+    for(g in 1:runvars$gens[r]){ 
+      #for(g in 1:(runvars$gens[r] + runvars$lifespan[r] + 1)){  #Says how long to simulate: generations (years) plus a single lifespan + 1
 
-        ## Code to stop run for testing or validation:
-        # if (g == 40){
-        #   break
-        # }
+        #print(g)
         
-#### Add immigrants to the population ####
-        
-        ###  look for extinct populations (before immigration makes it no longer extinct) ####
+  ###  look for extinct populations (before immigration makes it no longer extinct) ####
         if(nrow(population %>% filter(alive==1))<2){
           print("pop went extinct")
           alldead <<- "pop went extinct"
           AllDead(alldead, population, runvars$outdir[r], r)
           break
         }
-       
-        ## Add migrants to the population 
-        migrants = NULL
-        
-        if(runvars$nimmigrants[r]>0){
-          #if(runvars$nimmigrants[r]>0 & g %% runvars$maturity[r] == 0){
-          
-          # add migrants for the year - all are mature adults
-          migrants     = Immigrant(runvars$nimmigrants[r], runvars$maturity[r], runvars$lifespan[r], runvars$nloci[r], otherpop, runvars$sigp[r], population, totalinds)
-          #migrants[,"RRS"] = mean(data.matrix(population[population[,9]==1,"RRS",drop=FALSE])) #assign migrants mean RRS as overall population
-          population   = bind_rows(population, migrants)
-          
-          totalinds    = totalinds + runvars$nimmigrants[r]
-        } else {
-          migrants=NULL
-        }        
-        
-        remove(migrants)
-        
+    
 #### Identify the spawners for each location (hatch vs wild) based on pHOS and pNOB:
 
       datasets = IdentifySpawners(population, runvars$pBroodstock[r], runvars$pNOB[r], runvars$pHOS[r], 
@@ -68,7 +54,7 @@ RunModel = function(runvars, r){
                                   runvars$maturity[r], runvars$perSpawn1[r], runvars$perSpawn2[r], runvars$perSpawn3[r],
                                   g, alldead)
       
-      spawners     = datasets$spawners
+      spawners   = datasets$spawners
       population = datasets$population
       remove(datasets)
       
@@ -86,7 +72,10 @@ RunModel = function(runvars, r){
     offspring = NULL
 
       if(nrow(spawners %>% filter(SpawnLocation=="wild"))>2){
-      offspring  = Repro(spawners, runvars$fecundity[r], runvars$nloci[r], runvars$sigp[r], g, runvars$mu[r], runvars$alpha2[r])
+      offspring  = Repro(spawners, runvars$fecundity[r], runvars$nloci[r], g)
+      
+      #Save offspring demographics
+      offPhenos_list = OffPhenos(offPhenos_list, offspring, g)
       
       ##if no offspring are produced, end run
       if(is.null(offspring) | nrow(offspring)==0){
@@ -96,11 +85,10 @@ RunModel = function(runvars, r){
         break
       }
       
-      #Mortality based on phenotype (selection)
-      # offspring = WildSelection(offspring, g, runvars$sThetaHigh[r], runvars$sThetaMed[r], runvars$sThetaLow[r], runvars$omegaWild[r], runvars$sThetaVar[r])
-
-      #Density-dependent, selective mortality 
-      offspring = DensityDep(offspring, runvars$alphaAB[r], runvars$alphaAA[r], runvars$alphaBB[r], runvars$beta[r], g, runvars$l[r], totalinds)
+     #Density-dependent, selective mortality (multi-niche selection)
+        offspring = DensityDepShepherd(offspring, g, totalinds, runvars$gens[r], r,
+                                       runvars$alpha[r], runvars$delta[r], runvars$bShepAA[r], 
+                                       runvars$bShepAB[r], runvars$bShepBB[r], runvars$stochNiches[r])
       
       } else {
           print("no wild spawners")
@@ -126,10 +114,9 @@ RunModel = function(runvars, r){
       if(nrow(spawners %>% filter(SpawnLocation=="hatchery"))>2){
         
         #Hatchery Reproduction AND selection happens here
-        coffspring = CaptiveRepro(spawners, g, runvars$nloci[r], totalinds, runvars$sigp[r],
-                                  runvars$coffprop[r], runvars$mu[r], 
-                                  runvars$alpha2[r], 
-                                  runvars$pHOS[r], runvars$capSelectAB[r], runvars$capSelectAA[r], runvars$capSelectBB[r], 
+        coffspring = CaptiveRepro(spawners, g, runvars$nloci[r], totalinds,
+                                  runvars$coffprop[r], runvars$pHOS[r], 
+                                  runvars$capSelectAB[r], runvars$capSelectAA[r], runvars$capSelectBB[r], 
                                   runvars$fecundity[r])
           
         if(is.null(coffspring)){
@@ -181,16 +168,23 @@ RunModel = function(runvars, r){
       break
     }
     
+
 #### Write info for all dead individuals, then remove all dead from population object ####
     # NOTE: This is the step where generation info is saved to individuals.csv
     population <- AllDead(alldead, population, runvars$outdir[r], r)
+    
+    # #For testing:
+    # if (g == 21) {
+    #   population_debug <<- population
+    #   return(NULL)
+    # }
 
   } #Ends the for loop for generations
   
 ##########################################################
 ####  calculate and writeout pop leftovers and error codes  ####
   #SavePopLeftovers(population, runvars$outdir[r], r)
-  SavePopLeftovers(population, runvars, r, alldead, runvars$outdir[r])
+  SavePopLeftovers(population, runvars, r, alldead, runvars$outdir[r], offPhenos_list)
   
   #WriteOut(runvars, r)
 }

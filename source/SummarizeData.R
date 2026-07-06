@@ -1,27 +1,28 @@
+SummarizeData = function(outdir){
   
-  rm(list = ls()) 
-  library(tidyverse)
+  # rm(list = ls()) #clear the deck
+  # library(tidyverse) 
+  #outdir = "C:/Users/Haley.Ohms/OneDrive - Trout Unlimited/Documents/GitHub/captivebreeding-IBM-ohms/output/"
   
   ##############################################################  
   # Code to load the data and subset with analysis
   ##############################################################  
   
-  #Note: terminology is specific to hatcheries; 
-  #... 'spawners' = adults; 'hatcheryBS' = captive broodstock
-  
-  
-  dir = #ADD YOUR DIRECTORY HERE 
-  
+  dir = outdir
+ 
   files = list.files(dir, '*.csv', recursive = F, full.names = TRUE)
   bnames = basename(files)
   
-  #Load run variables; select variables of interest
+  #Load run variables; select out what I care about
   load(paste(dir, 'runVars.rda', sep = ""))
-    runVarsSub = runvars %>% select(run, pNOB, pHOS, pBroodstock, capSelectAB, capSelectAA, capSelectBB) 
+    runVarsSub = runvars %>% select(run, pNOB, pHOS, pBroodstock, capSelectAB, capSelectAA, capSelectBB, nloci, nAlleles, fecundity) 
   
-
+   #i=1
+    
   for(i in 1:length(files)){
     
+    #print(i)
+
     #... Read in table
     tbl = read.csv(files[i], stringsAsFactors=FALSE, header = T)
     
@@ -30,18 +31,18 @@
     run = as.numeric(sub('population_indvs_', '',bnPart))
     tbl$run = run
     
-    #Filter out only wild spawners and hatchery broodstock 
+    #Filter out only wild spawners and hatchery BS (i.e., exclude culled fish)
     tbl <- tbl %>% filter(fate=="wildSpawn" | fate=="hatcheryBS") 
     
-
     #... Summarize loci of large effect
-    # By all spawners (adults) together
+    # By all spawners together
     tbl_lociLA_spawners <- tbl %>%
       group_by(run, gen, pheno) %>%
       summarize(byPheno = n()) %>%
       mutate(total = sum(byPheno),
              perPheno = byPheno/total) %>%
       left_join(runVarsSub)
+    
 
     # By origin
     tbl_lociLA_byOrigin <- tbl %>%
@@ -52,32 +53,49 @@
       left_join(runVarsSub)
 
 
-    #... Allelic Richness
-    temp <- tbl %>%
-      select(ID, run, gen, fate, HvsW, L2m, L3m, L4m,
-             L5m, L6m, L7m, L8m, L9m, L10m, L11m, L12m,
-             L13m, L14m, L15m, L16m, L17m, L18m, L19m, L20m,
-             L21m, L22m, L23m, L24m, L25m, L26m, L27m, L28m,
-             L29m, L30m, L31m,
-             L2d, L3d, L4d, L5d,
-             L6d, L7d, L8d, L9d, L10d, L11d, L12d, L13d,
-             L14d, L15d, L16d, L17d, L18d, L19d, L20d, L21d,
-             L22d, L23d, L24d, L25d, L26d, L27d, L28d, L29d,
-             L30d, L31d) %>%
-      pivot_longer(!c(ID, run, gen, fate, HvsW), names_to = "loci", values_to = "allele")
 
+    #... Allelic Richness
+    named_cols <- c("ID", "run", "gen", "fate", "HvsW")
+    
+    temp <- tbl %>%
+      select(all_of(named_cols), 
+             matches("^L([2-9]|[1-9][0-9]+)[md]$")) %>% #selects all neutral loci in Lxd and Lxm where x>1
+       pivot_longer(!c(ID, run, gen, fate, HvsW), names_to = "loci", values_to = "allele")
+    
+    
 
     tbl_alleles_pop <- temp %>%
       group_by(run, gen) %>%
       summarise(uniqueAlleles = n_distinct(allele), 
-                percentRemain = uniqueAlleles/300) %>%
+                percentRemain = uniqueAlleles/((runVarsSub$nloci[i]-1)*runVarsSub$nAlleles[i])) %>%
       left_join(runVarsSub)
 
     tbl_alleles_pop_origin <- temp %>%
       group_by(run, gen, HvsW) %>%
       summarise(uniqueAlleles = n_distinct(allele), 
-                percentRemain = uniqueAlleles/300) %>%
+                percentRemain = uniqueAlleles/((runVarsSub$nloci[i]-1)*runVarsSub$nAlleles[i])) %>%
       left_join(runVarsSub)
+    
+    
+    
+    #heterozygosity
+    
+    #Identify columsn for 'mom' and 'dad'
+    m_cols <- paste0("L", 2:runVarsSub$nloci[i], "m") #starts at 2 to exclude locus of large effect
+    d_cols <- paste0("L", 2:runVarsSub$nloci[i], "d")
+    
+    het_mat <- as.matrix(tbl[, m_cols]) != as.matrix(tbl[, d_cols])
+    
+    tbl_ind_het <- tbl %>%
+      filter(fate!="culled") %>% 
+      mutate(hetz = rowMeans(het_mat))
+    
+    tbl_heteroz <- tbl_ind_het %>%
+      group_by(run, gen, HvsW) %>%
+      summarise(meanHz = mean(hetz), .groups = "drop") %>%
+      left_join(runVarsSub)
+    
+    
 
     #... Total by fate and origin
     tbl_n = tbl %>%
@@ -207,11 +225,21 @@
     #   tbl_momOffsp_byPheno = NULL
     #   tbl_gmaOffsp_byPheno = NULL
     # }
+        
+        #########################
+        
+        # Calc Fitness by Phenotype: 
+        tbl_fitness_byPheno <- momOffspN %>%
+          group_by(momGen, momPheno) %>%
+          summarise(meanN = mean(n)) 
+        
+        ###################
 
     
     if(i == 1){
         dat_alleles_pop = tbl_alleles_pop
         dat_alleles_pop_origin = tbl_alleles_pop_origin
+        dat_heteroz = tbl_heteroz
         
         dat_n = tbl_n
           dat_n_byPheno = tbl_n_byPheno
@@ -225,12 +253,15 @@
         dat_momOffsp_byPheno = tbl_momOffsp_byPheno
         dat_gmaOffsp_byPheno = tbl_gmaOffsp_byPheno
 
+        dat_fitness_byPheno = tbl_fitness_byPheno
+        
       
       
     } else{
           dat_alleles_pop = rbind(dat_alleles_pop, tbl_alleles_pop)
             dat_alleles_pop_origin = rbind(dat_alleles_pop_origin, tbl_alleles_pop_origin)
-        
+            dat_heteroz = rbind(dat_heteroz, tbl_heteroz)
+            
         dat_n = rbind(dat_n, tbl_n)
           dat_n_byPheno = rbind(dat_n_byPheno, tbl_n_byPheno)
 
@@ -242,6 +273,8 @@
         
         dat_momOffsp_byPheno = rbind(dat_momOffsp_byPheno, tbl_momOffsp_byPheno)
         dat_gmaOffsp_byPheno = rbind(dat_gmaOffsp_byPheno, tbl_gmaOffsp_byPheno)
+          dat_fitness_byPheno = rbind(dat_fitness_byPheno, tbl_fitness_byPheno)
+        
         
 
     }
@@ -249,7 +282,8 @@
     
       save(dat_alleles_pop_origin, file=paste(dir, "dat_alleles_pop_origin.rda", sep = ""))
       save(dat_alleles_pop, file=paste(dir, "dat_alleles_pop.rda", sep = ""))
-  
+      save(dat_heteroz, file=paste(dir, "dat_heteroz.rda", sep = ""))
+      
             save(dat_n, file=paste(dir, "dat_n.rda", sep = ""))
         save(dat_n_byPheno, file=paste(dir, "dat_n_byPheno.rda", sep = ""))
 
@@ -261,6 +295,9 @@
       
       save(dat_momOffsp_byPheno, file=paste(dir, "dat_momOffsp_byPheno.rda", sep = ""))
       save(dat_gmaOffsp_byPheno, file=paste(dir, "dat_gmaOffsp_byPheno.rda", sep = ""))
+        save(dat_fitness_byPheno, file=paste(dir, "dat_fitness_byPheno.rda", sep=""))
       
       
-  
+}
+      
+      

@@ -1,7 +1,7 @@
 
 ## Saves all the alive individuals at end of loops
 
-SavePopLeftovers = function(population, runvars, r, alldead, outdir){
+SavePopLeftovers = function(population, runvars, r, alldead, outdir, offPhenos_list){
   
   # write_csv(population, file=paste(outdir, "PopulationLeftOvers_",
   #                                  formatC(r, width = 4, format = "d", flag = "0"),
@@ -11,6 +11,12 @@ SavePopLeftovers = function(population, runvars, r, alldead, outdir){
   errorCodes = cbind(r, alldead)
   write.table(errorCodes, paste(outdir, "errors.csv", sep = ""), 
               sep=",",col.names=F,append=T,quote=F,row.names=F) 
+  
+  ## Write out offspring phenotypes
+  offPhenos <- dplyr::bind_rows(offPhenos_list)
+  save(offPhenos, file=paste0(outdir, "Offspring_Phenos",
+                             formatC(r, width = 4, format = "d", flag = "0"),
+                             ".rda"))
   
   
   # save(population, file = paste(runvars$outdir[r], "PopulationLeftOvers_",
