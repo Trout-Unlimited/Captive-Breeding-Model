@@ -3,8 +3,7 @@ rm(list = ls()) #clear the deck
 library(tidyverse)
 
 # FOR LOCAL ###########################
-directory = "C:/Users/Haley.Ohms/OneDrive - Trout Unlimited/Documents/GitHub/CaptiveBreedingModel-Public/"
-  #Example: "C:/Users/Haley.Ohms/CaptiveBreedingModel/"
+directory = #Example: "C:/Users/Haley.Ohms/CaptiveBreedingModel/"
 outdir    = paste(directory,"output/",sep="")                    #directory to save model output
 source(paste(directory, "/source/FunctionSourcer.R", sep = ''))   #source functions and set source directory
 
